@@ -1,1 +1,88 @@
 
+
+First lambda function code
+////////////////////
+
+import json
+import boto3
+import uuid
+
+transcribe = boto3.client('transcribe')
+
+def lambda_handler(event, context):
+    
+    bucketname=event['Records'][0]['s3']['bucket']['name']
+    filename=event['Records'][0]['s3']['object']['key']
+    
+    url = "s3://" + bucketname + "/" + filename
+    
+    myuuid = uuid.uuid1().int
+    
+    response = transcribe.start_transcription_job(
+                 
+                    TranscriptionJobName="Job_name" + "-" + str(myuuid), 
+                    LanguageCode='en-US',
+                    MediaFormat='mp3',
+                    Media={
+                        'MediaFileUri': url,
+                            },
+                            
+                    OutputBucketName="destination_s3_name",
+                    OutputKey="myaudiojob" + "-" + str(myuuid) + ".json"
+                    )
+    
+    print(response)
+
+
+
+
+
+
+
+
+
+
+Second lambda function code
+////////////////////
+
+import json
+import openai
+import boto3
+
+openai.api_key = "Enter your api-key"
+
+def lambda_handler(event, context):
+   bucket_name=event['Records'][0]['s3']['bucket']['name']
+   file_name=event['Records'][0]['s3']['object']['key']
+   s3 = boto3.client('s3')
+   response = s3.get_object(Bucket = bucket_name, Key = file_name)
+   content = response['Body']
+   jsonObject = json.loads(content.read())
+   cont = jsonObject["results"]["transcripts"][0]["transcript"]
+   
+   myprompt = f"Suppose you are expert in summarizing things and have a great writing skills as well, this is the input text {cont} ,you have to summarize this in 5 lines and keep easy english words and give me summary in points step by step."
+   
+   reply = openai.ChatCompletion.create(
+      model="gpt-3.5-turbo",
+      messages=[
+         {
+            "role": "user",
+            "content": myprompt
+         }
+      ]
+   )
+   
+   summary = reply.choices[0].message.content
+   
+   # sns
+   subject = "Summary of your file"
+   message = summary
+   mysns = boto3.client("sns")
+   response = mysns.publish(
+         TopicArn='ARN of your created topic to send emails',
+         Message=summary,
+         Subject=subject
+   )
+   return response
+   ////////////////
+   
